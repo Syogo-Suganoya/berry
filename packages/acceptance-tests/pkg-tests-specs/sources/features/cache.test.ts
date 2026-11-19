@@ -15,6 +15,30 @@ describe(`Cache`, () => {
   );
 
   for (const enableGlobalCache of [false, true]) {
+    test(
+      `it should explain where the cache folder comes from when it can't be created (${enableGlobalCache ? `global` : `local`} cache)`,
+      makeTemporaryEnv({
+        dependencies: {
+          [`no-deps`]: `1.0.0`,
+        },
+      }, {
+        enableGlobalCache,
+      }, async ({path, run, source}) => {
+        // A regular file can't contain folders, so creating the cache inside it fails
+        const blocker = ppath.join(path, `blocker` as Filename);
+        await xfs.writeFilePromise(blocker, ``);
+
+        await expect(run(`install`, {
+          env: {
+            YARN_GLOBAL_FOLDER: `${blocker}/global`,
+            YARN_CACHE_FOLDER: `${blocker}/cache`,
+          },
+        })).rejects.toThrow(/Failed to create the cache folder at .*blocker.*; check that it's writable, or change its location through the .*globalFolder.* settings/);
+      }),
+    );
+  }
+
+  for (const enableGlobalCache of [false, true]) {
     for (const withLockfile of [false, true]) {
       test(
         `it should make packages installable even without network (${enableGlobalCache ? `global` : `local`} cache, ${withLockfile ? `with` : `without`} lockfile)`,
