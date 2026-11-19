@@ -634,6 +634,42 @@ describe(`Scripts tests`, () => {
       );
 
       test(
+        `it should ignore bin entries that point to directories`,
+        makeTemporaryEnv(
+          {
+            dependencies: {[`dir-bin`]: `portal:./dir-bin`},
+            scripts: {hello: `echo hello`},
+          },
+          config,
+          async ({path, run, source}) => {
+            // That's what npm generates from `directories.bin` when the folder has subfolders
+            await xfs.mkdirPromise(ppath.join(path, `/dir-bin/out/generated`), {recursive: true});
+            await xfs.writeJsonPromise(ppath.join(path, `/dir-bin/package.json`), {
+              name: `dir-bin`,
+              version: `1.0.0`,
+              bin: {
+                [`dir-bin`]: `./bin.js`,
+                [`generated`]: `./out/generated`,
+              },
+            });
+            await xfs.writeFilePromise(ppath.join(path, `/dir-bin/bin.js`), `console.log(42);\n`);
+
+            await run(`install`);
+
+            await expect(run(`run`, `hello`)).resolves.toMatchObject({
+              code: 0,
+              stdout: `hello\n`,
+            });
+
+            await expect(run(`run`, `dir-bin`)).resolves.toMatchObject({
+              code: 0,
+              stdout: `42\n`,
+            });
+          },
+        ),
+      );
+
+      test(
         `it should run native binaries`,
         makeTemporaryEnv({}, async ({path, run, source}) => {
           const gitProcess = await execP(`git`, [`--exec-path`]);

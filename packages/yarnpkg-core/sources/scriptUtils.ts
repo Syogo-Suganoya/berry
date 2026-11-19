@@ -604,6 +604,14 @@ export async function maybeExecuteWorkspaceLifecycleScript(workspace: Workspace,
   }
 }
 
+function isDirectory(p: PortablePath) {
+  try {
+    return xfs.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 export function isNodeScript(p: PortablePath) {
   const ext = ppath.extname(p);
   if (ext.match(/\.[cm]?[jt]sx?$/))
@@ -623,6 +631,10 @@ export function isNodeScript(p: PortablePath) {
 
   try {
     xfs.readSync(fd, buf, 0, buf.length, 0);
+  } catch {
+    // Opening a directory may succeed while reading it fails (EISDIR); we
+    // treat it like any other unreadable path rather than crashing
+    return true;
   } finally {
     xfs.closeSync(fd);
   }
@@ -712,6 +724,12 @@ export async function getPackageAccessibleBinaries(locator: Locator, {project}: 
 
     for (const [name, target] of dependency.bin) {
       const binaryPath = ppath.resolve(packageLocation, target);
+
+      // npm expands `directories.bin` into `bin` at publish time, including the
+      // subdirectories it contains. Those can't be executed, so we skip them.
+      if (isDirectory(binaryPath))
+        continue;
+
       binaries.set(name, [dependency, npath.fromPortablePath(binaryPath), isNodeScript(binaryPath)]);
     }
   }
