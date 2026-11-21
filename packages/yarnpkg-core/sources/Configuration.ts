@@ -1180,6 +1180,13 @@ export class Configuration {
     delete environmentSettings.rcFilename;
 
     const configuration = new Configuration(startingCwd);
+
+    // The primary core fields (such as `injectEnvironmentFiles`) are parsed
+    // before anything else, so the environment must be available right away
+    // for their `${NAME}` references to be interpolated
+    const env = Object.assign(Object.create(null), process.env);
+    configuration.env = env;
+
     const rcFiles = await Configuration.findRcFiles(startingCwd);
 
     const homeRcFile = await Configuration.findFolderRcFile(folderUtils.getHomeFolder());
@@ -1253,9 +1260,6 @@ export class Configuration {
 
     configuration.startingCwd = startingCwd;
     configuration.projectCwd = projectCwd;
-
-    const env = Object.assign(Object.create(null), process.env);
-    configuration.env = env;
 
     // load the environment files
     const environmentFiles = await Promise.all(configuration.get(`injectEnvironmentFiles`).map(async p => {
@@ -1630,9 +1634,20 @@ export class Configuration {
     try {
       this.use(source, data, folder, opts);
     } catch (error) {
-      error.message += ` (in ${formatUtils.pretty(this, source, formatUtils.Type.PATH)})`;
+      error.message += ` (in ${this.prettySource(source)})`;
       throw error;
     }
+  }
+
+  private prettySource(source: string) {
+    // The formatting settings aren't registered yet when the error comes from
+    // one of the primary core fields (which are parsed first), so we can't use
+    // them; otherwise the original error would be replaced by a confusing
+    // "Invalid configuration key" one
+    if (!this.settings.has(`enableColors`))
+      return source;
+
+    return formatUtils.pretty(this, source, formatUtils.Type.PATH);
   }
 
   use(source: string, data: {[key: string]: unknown}, folder: PortablePath, {strict = true, overwrite = false}: {strict?: boolean, overwrite?: boolean} = {}) {
@@ -1687,7 +1702,7 @@ export class Configuration {
       try {
         parsed = parseValue(this, key, value, definition, folder);
       } catch (error) {
-        error.message += ` in ${formatUtils.pretty(this, source, formatUtils.Type.PATH)}`;
+        error.message += ` in ${this.prettySource(source)}`;
         throw error;
       }
 

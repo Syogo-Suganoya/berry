@@ -95,6 +95,54 @@ describe(`DotEnv files`, () => {
     });
   }));
 
+  it(`should interpolate environment variables in the environment file paths`, makeTemporaryEnv({}, async ({path, run, source}) => {
+    await xfs.writeJsonPromise(ppath.join(path, Filename.rc), {
+      injectEnvironmentFiles: [`.env.\${APPLICATION_ENV}`],
+    });
+
+    await xfs.writeFilePromise(ppath.join(path, `.env.staging`), [
+      `INJECTED_FROM_ENV_FILE=staging\n`,
+    ].join(``));
+
+    await run(`install`, {env: {APPLICATION_ENV: `staging`}});
+
+    await expect(run(`exec`, `env`, {env: {APPLICATION_ENV: `staging`}})).resolves.toMatchObject({
+      stdout: expect.stringMatching(/^INJECTED_FROM_ENV_FILE=staging$/m),
+    });
+  }));
+
+  it(`should only use the fallback of an environment file path when the variable isn't set`, makeTemporaryEnv({}, async ({path, run, source}) => {
+    await xfs.writeJsonPromise(ppath.join(path, Filename.rc), {
+      injectEnvironmentFiles: [`.env.\${APPLICATION_ENV:-production}`],
+    });
+
+    await xfs.writeFilePromise(ppath.join(path, `.env.production`), [
+      `INJECTED_FROM_ENV_FILE=production\n`,
+    ].join(``));
+
+    await xfs.writeFilePromise(ppath.join(path, `.env.staging`), [
+      `INJECTED_FROM_ENV_FILE=staging\n`,
+    ].join(``));
+
+    await run(`install`);
+
+    await expect(run(`exec`, `env`, {env: {APPLICATION_ENV: `staging`}})).resolves.toMatchObject({
+      stdout: expect.stringMatching(/^INJECTED_FROM_ENV_FILE=staging$/m),
+    });
+
+    await expect(run(`exec`, `env`)).resolves.toMatchObject({
+      stdout: expect.stringMatching(/^INJECTED_FROM_ENV_FILE=production$/m),
+    });
+  }));
+
+  it(`should report missing environment variables referenced by the environment file paths`, makeTemporaryEnv({}, async ({path, run, source}) => {
+    await xfs.writeJsonPromise(ppath.join(path, Filename.rc), {
+      injectEnvironmentFiles: [`.env.\${APPLICATION_ENV}`],
+    });
+
+    await expect(run(`install`)).rejects.toThrow(/Environment variable not found \(APPLICATION_ENV\)/);
+  }));
+
   it(`should throw an error if the settings reference a non-existing file`, makeTemporaryEnv({}, async ({path, run, source}) => {
     await xfs.writeJsonPromise(ppath.join(path, Filename.rc), {
       injectEnvironmentFiles: [`.my-env`],
