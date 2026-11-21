@@ -302,7 +302,16 @@ const plugin = async function(context: LoadContext, options: Options): Promise<P
       return Object.fromEntries(
         await Promise.all(binaries.map(async ({name, getCli}) => {
           const cli = await getCli();
-          return [name, cli.definitions()] as const;
+
+          // Several commands can share the same path (for example `yarn init` and
+          // `yarn init <initializer>`), but they would be rendered to the same page,
+          // so we only keep the first one to avoid duplicated sidebar entries.
+          const definitions = new Map<string, Definition>();
+          for (const definition of cli.definitions())
+            if (!definitions.has(definition.path))
+              definitions.set(definition.path, definition);
+
+          return [name, [...definitions.values()]] as const;
         })),
       );
     },
