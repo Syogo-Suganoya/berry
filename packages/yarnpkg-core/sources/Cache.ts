@@ -212,7 +212,7 @@ export class Cache {
           throw new ReportError(MessageName.IMMUTABLE_CACHE, `Cache path does not exist.`);
         }
       } else {
-        await xfs.mkdirPromise(this.cwd, {recursive: true});
+        await this.mkdirCacheFolder(this.cwd);
 
         const gitignorePath = ppath.resolve(this.cwd, `.gitignore`);
 
@@ -221,7 +221,26 @@ export class Cache {
     }
 
     if (this.mirrorCwd || !this.immutable) {
-      await xfs.mkdirPromise(this.mirrorCwd || this.cwd, {recursive: true});
+      await this.mkdirCacheFolder(this.mirrorCwd || this.cwd);
+    }
+  }
+
+  private async mkdirCacheFolder(folder: PortablePath) {
+    try {
+      await xfs.mkdirPromise(folder, {recursive: true});
+    } catch (error) {
+      // The cache folders are derived from settings (and, by default, from the
+      // home directory), so a raw fs error alone doesn't tell where the path
+      // comes from - which is confusing when for example HOME isn't writable.
+      const settings = folder === this.mirrorCwd
+        ? [`globalFolder`] as const
+        : [`cacheFolder`, `globalFolder`] as const;
+
+      const settingList = settings.map(setting => formatUtils.pretty(this.configuration, setting, formatUtils.Type.SETTING)).join(` and `);
+
+      const reportError = new ReportError(MessageName.UNNAMED, `Failed to create the cache folder at ${formatUtils.pretty(this.configuration, folder, formatUtils.Type.PATH)} (${error.message}); check that it's writable, or change its location through the ${settingList} settings`);
+      reportError.originalError = error;
+      throw reportError;
     }
   }
 
